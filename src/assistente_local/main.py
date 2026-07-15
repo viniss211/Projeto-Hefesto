@@ -5,13 +5,16 @@ import json
 from typing import Any
 
 from assistente_local import __version__
+from assistente_local.memory import create_default_memory_store
 from assistente_local.tools import ToolRegistry, build_default_registry
 
 APP_NAME = "Assistente Local"
 
 
-def get_system_status(registry: ToolRegistry | None = None) -> dict[str, Any]:
-    """Retorna informações sobre o estado atual do sistema."""
+def get_system_status(
+    registry: ToolRegistry | None = None,
+) -> dict[str, Any]:
+    """Retorna informações sobre o sistema."""
 
     tools_loaded = registry.count() if registry is not None else 0
 
@@ -24,7 +27,7 @@ def get_system_status(registry: ToolRegistry | None = None) -> dict[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Cria os argumentos aceitos pela linha de comando."""
+    """Cria os argumentos da linha de comando."""
 
     parser = argparse.ArgumentParser(
         prog="assistente",
@@ -49,16 +52,52 @@ def build_parser() -> argparse.ArgumentParser:
         help="Abre um programa permitido.",
     )
 
+    parser.add_argument(
+        "--lembrar",
+        nargs=2,
+        metavar=("CHAVE", "VALOR"),
+        help="Salva uma informação na memória.",
+    )
+
+    parser.add_argument(
+        "--recordar",
+        metavar="CONSULTA",
+        help="Pesquisa uma informação na memória.",
+    )
+
+    parser.add_argument(
+        "--categoria",
+        default="general",
+        help="Categoria usada ao salvar ou consultar uma memória.",
+    )
+
+    parser.add_argument(
+        "--importancia",
+        type=int,
+        choices=range(1, 6),
+        default=1,
+        help="Importância da memória entre 1 e 5.",
+    )
+
     return parser
 
 
-def print_result(result_message: str, result_data: dict[str, Any]) -> None:
+def print_result(
+    result_message: str,
+    result_data: dict[str, Any],
+) -> None:
     """Exibe o resultado de uma ferramenta."""
 
     print(result_message)
 
     if result_data:
-        print(json.dumps(result_data, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                result_data,
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
 
 
 def main() -> None:
@@ -67,10 +106,17 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    registry = build_default_registry()
+    memory_store = create_default_memory_store()
+    registry = build_default_registry(memory_store)
 
     if args.listar_ferramentas:
-        print(json.dumps(registry.list_schemas(), ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                registry.list_schemas(),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return
 
     if args.listar_programas:
@@ -86,6 +132,34 @@ def main() -> None:
         print_result(result.message, result.data)
         return
 
+    if args.lembrar:
+        key, value = args.lembrar
+
+        result = registry.execute(
+            "remember_information",
+            {
+                "key": key,
+                "value": value,
+                "category": args.categoria,
+                "importance": args.importancia,
+            },
+        )
+
+        print_result(result.message, result.data)
+        return
+
+    if args.recordar:
+        result = registry.execute(
+            "recall_information",
+            {
+                "query": args.recordar,
+                "category": args.categoria,
+            },
+        )
+
+        print_result(result.message, result.data)
+        return
+
     status = get_system_status(registry)
 
     print("=" * 50)
@@ -93,7 +167,7 @@ def main() -> None:
     print(f"Status: {status['status']}")
     print(f"Ferramentas carregadas: {status['tools_loaded']}")
     print("=" * 50)
-    print("Sistema de ferramentas inicializado.")
+    print("Memória persistente inicializada.")
 
 
 if __name__ == "__main__":
