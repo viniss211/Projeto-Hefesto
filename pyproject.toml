@@ -4,11 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "assistente-local"
-version = "0.3.0"
+version = "0.5.0"
 description = "Assistente de IA local com memória, ferramentas e automação."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "openai",
+    "python-dotenv",
+]
 
 [project.optional-dependencies]
 dev = [

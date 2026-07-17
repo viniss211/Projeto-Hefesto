@@ -27,13 +27,12 @@ class BaseTool(ABC):
         """Executa a ferramenta."""
 
     def as_schema(self) -> dict[str, Any]:
-        """Retorna o schema compatível com function calling."""
+        """Retorna o schema compatível com a Responses API."""
 
         return {
             "type": "function",
-            "function": {
-                "name": self.name,
-                "description": self.description,
-                "parameters": self.parameters,
-            },
+            "name": self.name,
+            "description": self.description,
+            "parameters": self.parameters,
+            "strict": False,
         }

@@ -42,9 +42,7 @@ def normalize_identifier(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
 
     without_accents = "".join(
-        character
-        for character in normalized
-        if not unicodedata.combining(character)
+        character for character in normalized if not unicodedata.combining(character)
     )
 
     return "_".join(without_accents.lower().strip().split())
