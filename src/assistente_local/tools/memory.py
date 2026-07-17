@@ -12,8 +12,7 @@ class RememberInformationTool(BaseTool):
 
     name = "remember_information"
     description = (
-        "Salva uma informação importante, preferência ou fato "
-        "na memória persistente do assistente."
+        "Salva uma informação importante, preferência ou fato na memória persistente do assistente."
     )
     requires_approval = False
 
@@ -23,8 +22,7 @@ class RememberInformationTool(BaseTool):
             "key": {
                 "type": "string",
                 "description": (
-                    "Identificador curto da informação, "
-                    "como editor_preferido ou nome_usuario."
+                    "Identificador curto da informação, como editor_preferido ou nome_usuario."
                 ),
             },
             "value": {
@@ -34,8 +32,7 @@ class RememberInformationTool(BaseTool):
             "category": {
                 "type": "string",
                 "description": (
-                    "Categoria da memória, como preferencias, "
-                    "perfil, trabalho ou projetos."
+                    "Categoria da memória, como preferencias, perfil, trabalho ou projetos."
                 ),
                 "default": "general",
             },
@@ -107,10 +104,7 @@ class RecallInformationTool(BaseTool):
     """Pesquisa informações armazenadas."""
 
     name = "recall_information"
-    description = (
-        "Pesquisa fatos e preferências armazenados "
-        "na memória persistente do assistente."
-    )
+    description = "Pesquisa fatos e preferências armazenados na memória persistente do assistente."
     requires_approval = False
 
     parameters: dict[str, Any] = {
@@ -184,10 +178,5 @@ class RecallInformationTool(BaseTool):
         return ToolResult(
             success=True,
             message=f"{len(memories)} memória(s) encontrada(s).",
-            data={
-                "memories": [
-                    asdict(memory)
-                    for memory in memories
-                ]
-            },
+            data={"memories": [asdict(memory) for memory in memories]},
         )

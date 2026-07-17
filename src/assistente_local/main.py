@@ -5,8 +5,25 @@ import json
 from typing import Any
 
 from assistente_local import __version__
-from assistente_local.memory import create_default_memory_store
-from assistente_local.tools import ToolRegistry, build_default_registry
+from assistente_local.agent import AssistantAgent
+from assistente_local.ai import (
+    AIProvider,
+    FallbackProvider,
+    GroqProvider,
+    OllamaProvider,
+    OpenAIProvider,
+    ProviderEntry,
+)
+from assistente_local.config import Settings, load_settings
+from assistente_local.observability import setup_logging
+from assistente_local.memory import (
+    MemoryStore,
+    create_default_memory_store,
+)
+from assistente_local.tools import (
+    ToolRegistry,
+    build_default_registry,
+)
 
 APP_NAME = "Assistente Local"
 
@@ -49,26 +66,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--abrir",
         metavar="PROGRAMA",
-        help="Abre um programa permitido.",
+        help="Abre diretamente um programa permitido.",
     )
 
     parser.add_argument(
         "--lembrar",
         nargs=2,
         metavar=("CHAVE", "VALOR"),
-        help="Salva uma informação na memória.",
+        help="Salva diretamente uma informação.",
     )
 
     parser.add_argument(
         "--recordar",
         metavar="CONSULTA",
-        help="Pesquisa uma informação na memória.",
+        help="Pesquisa diretamente uma memória.",
     )
 
     parser.add_argument(
         "--categoria",
         default="general",
-        help="Categoria usada ao salvar ou consultar uma memória.",
+        help="Categoria da memória.",
     )
 
     parser.add_argument(
@@ -77,6 +94,18 @@ def build_parser() -> argparse.ArgumentParser:
         choices=range(1, 6),
         default=1,
         help="Importância da memória entre 1 e 5.",
+    )
+
+    parser.add_argument(
+        "--perguntar",
+        metavar="MENSAGEM",
+        help="Envia uma mensagem natural para a IA.",
+    )
+
+    parser.add_argument(
+        "--chat",
+        action="store_true",
+        help="Inicia uma conversa contínua com a IA.",
     )
 
     return parser
@@ -99,9 +128,134 @@ def print_result(
             )
         )
 
+def build_ai_provider(
+    settings: Settings,
+) -> AIProvider:
+    """Cria a cadeia de provedores configurada."""
+
+    providers: list[ProviderEntry] = []
+
+    for provider_name in settings.ai_provider_chain:
+        if provider_name == "groq":
+            provider = GroqProvider(settings)
+
+        elif provider_name == "ollama":
+            provider = OllamaProvider(settings)
+
+        elif provider_name == "openai":
+            provider = OpenAIProvider(settings)
+
+        else:
+            raise ValueError(
+                f"Provedor não suportado: {provider_name}."
+            )
+
+        providers.append(
+            ProviderEntry(
+                name=provider_name,
+                provider=provider,
+            )
+        )
+
+    return FallbackProvider(providers)
+
+def terminal_approval_handler(
+    tool_name: str,
+    arguments: dict[str, Any],
+) -> bool:
+    """Solicita autorização para uma ação sensível."""
+
+    print("\n" + "=" * 50)
+    print("AÇÃO SENSÍVEL SOLICITADA")
+    print(f"Ferramenta: {tool_name}")
+    print(
+        json.dumps(
+            arguments,
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    print("=" * 50)
+
+    answer = input(
+        "Autorizar execução? [s/N]: "
+    ).strip().lower()
+
+    return answer in {
+        "s",
+        "sim",
+        "y",
+        "yes",
+    }
+
+def build_agent(
+    memory_store: MemoryStore,
+    registry: ToolRegistry,
+) -> AssistantAgent:
+    """Cria o agente com fallback automático."""
+
+    settings = load_settings()
+    provider = build_ai_provider(settings)
+
+    return AssistantAgent(
+        provider=provider,
+        registry=registry,
+        memory_store=memory_store,
+        max_tool_rounds=settings.max_tool_rounds,
+        approval_handler=terminal_approval_handler,
+    )
+
+
+def print_agent_result(result: Any) -> None:
+    """Exibe a resposta e as ferramentas utilizadas."""
+
+    for execution in result.tool_executions:
+        status = "OK" if execution.result.success else "ERRO"
+
+        print(f"[FERRAMENTA: {execution.name} | {status}]")
+
+    print(f"\nAssistente: {result.text}")
+
+
+def run_chat(agent: AssistantAgent) -> None:
+    """Inicia a conversa contínua pelo terminal."""
+
+    print("=" * 50)
+    print(f"{APP_NAME} v{__version__}")
+    print("Digite 'sair' para encerrar.")
+    print("=" * 50)
+
+    while True:
+        try:
+            user_message = input("\nVocê: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nConversa encerrada.")
+            return
+
+        if user_message.lower() in {
+            "sair",
+            "exit",
+            "encerrar",
+        }:
+            print("Conversa encerrada.")
+            return
+
+        if not user_message:
+            continue
+
+        try:
+            result = agent.run(user_message)
+        except Exception as error:
+            print(f"\nNão foi possível processar a mensagem: {error}")
+            continue
+
+        print_agent_result(result)
+
 
 def main() -> None:
     """Inicializa o Assistente Local."""
+
+    setup_logging()
 
     parser = build_parser()
     args = parser.parse_args()
@@ -160,6 +314,25 @@ def main() -> None:
         print_result(result.message, result.data)
         return
 
+    if args.perguntar:
+        agent = build_agent(
+            memory_store,
+            registry,
+        )
+
+        result = agent.run(args.perguntar)
+        print_agent_result(result)
+        return
+
+    if args.chat:
+        agent = build_agent(
+            memory_store,
+            registry,
+        )
+
+        run_chat(agent)
+        return
+
     status = get_system_status(registry)
 
     print("=" * 50)
@@ -167,7 +340,8 @@ def main() -> None:
     print(f"Status: {status['status']}")
     print(f"Ferramentas carregadas: {status['tools_loaded']}")
     print("=" * 50)
-    print("Memória persistente inicializada.")
+    print("IA, memória e ferramentas inicializadas.")
+    print("Use 'assistente --chat' para conversar.")
 
 
 if __name__ == "__main__":
